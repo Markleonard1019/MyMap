@@ -1,1 +1,474 @@
-import numpy
+
+refresh = False
+
+
+# 
+# 
+#  
+
+
+import gpxpy
+import tcxparser
+import xml.dom.minidom as minidom
+import matplotlib.pyplot as plt
+import os , glob, sys
+import numpy as np
+import pandas as pd
+from os import listdir
+from os.path import isfile, join
+import mpl_toolkits.basemap
+from mpl_toolkits.basemap import Basemap #plotting
+import pylab as plt
+#import gmplot
+import mymap
+from googleearthplot import googleearthplot
+
+
+images = '/Users/leonard/Documents/GPS/'
+Dataframes = '/Users/leonard/Documents/GPS/Dataframes'
+files = '/Users/leonard/Documents/GPS/Files/'
+os.chdir(files)
+all_files = glob.glob("*")
+gpx_files = glob.glob("*.gpx") #Mark
+tcx_files = glob.glob("*.tcx") #Dad
+def show(): plt.show();plt.close()
+
+# Read in dataframe of gpx file names.
+gpx_csv = pd.read_csv('%s/fileslist.txt'%Dataframes, sep=',')
+filelist = list(gpx_csv.gpx)
+
+
+# Create dataframe of gpx file names.
+data = pd.read_csv('%s/gpx.txt'%Dataframes, sep=',')
+x14ers = pd.read_csv('%s/x14ers.txt'%Dataframes, sep=',')
+data_tcx = pd.read_csv('%s/data_tcx.txt'%Dataframes, sep=',')
+
+
+print '\n'*12+'______________________________\n'
+
+'''
+Setup for GPX files
+'''
+
+data_path = files
+filesx = [f for f in listdir(data_path) if isfile(join(data_path,f))]
+filesx.remove('.DS_Store')
+lat = []
+lon = []
+elev = []
+time = []
+x = []
+c = []
+ccol = []
+deltaT = []
+name = []
+skiing = []
+sumelev = []
+sumlon = []
+sumlat = []
+s = []
+event = []
+mtn = 0
+file =[]
+eventtitle = []
+#i = 0
+#i = max(data.x)
+
+if refresh: i = 0
+else: i = max(data.x)
+
+
+'''
+Reading in the GPX files from Garmin Watch
+'''
+
+
+'''
+import multiprocessing
+pool = multiprocessing.Pool(processes=4)
+
+def GPX(activity):
+    if activity in filelist:
+        print activity
+        print i
+        return i
+
+pool.map(GPX,filelist)
+exit()
+'''
+for activity in filesx:
+
+    # skip repeats and .tcx files.
+    if any( ['.tcx' in activity, '-' in activity] ):
+        continue
+
+    # if I want to refresh
+    if not refresh:
+        if activity in filelist: # gpx_files
+            continue
+    print activity
+
+    gpx_filename = join(data_path,activity)
+    if len(activity)==9:
+        mtn=mtn+1 #number of 14ers
+    i = i+1#int(np.where(np.char.find(filesx,activity)==0)[0])
+    #print '-------%sth Event'%round(i,0)
+    gpx_file = open(gpx_filename, 'r')
+    gpx = gpxpy.parse(gpx_file)
+    gpx_file.close()
+    # Used just fpr points on peaks
+    for waypoints in gpx.waypoints:
+        ' 14ers.com GPX files read. '
+        sumlat.append(waypoints.latitude)
+        sumlon.append(waypoints.longitude)
+        sumelev.append(waypoints.elevation)
+        s.append(i)
+        #file.append(activity)
+        #name.append('14ers')
+
+
+    for route in gpx.routes:
+        'New 14ers.com points'
+
+        for point in route.points:
+            lat.append(point.latitude) #'''39.9894289579'''
+            lon.append(point.longitude)
+            elev.append(point.elevation)
+            time.append(point.time)
+            x.append(i)
+            name.append('14ers')
+            eventtitle.append('14ers')
+            file.append(activity)
+            skiing.append('No')
+
+    for track in gpx.tracks:
+        'New Garmin points read.'
+
+        for segment in track.segments:
+            for point in segment.points:
+                lat.append(point.latitude) #'''39.9894289579'''
+                lon.append(point.longitude)
+                elev.append(point.elevation)
+                time.append(point.time)
+                if len(time)<=2:
+                    d = 0
+                else:
+                    t = (str(point.time - time[-2]))
+                    d = int(t.split(':',2)[1])#>3
+                    if 'days' in t:
+                        d = 0
+                x.append(i)
+                deltaT.append(d)
+                file.append(activity)
+                didiski = 'No'
+                eventtitle.append(track.name)
+                if 'Running' in track.name:
+                    name.append('Running')
+                elif 'Hiking' in track.name:
+                    name.append('Hiking')
+                elif 'Cycling' in track.name:
+                    name.append('Cycling')
+                elif 'Skiing' in track.name:
+                    e = track.name
+                    e = e.replace(' Skiing/Snowboarding','')
+                    name.append('Skiing')
+                    didiski = e
+                elif 'Other' in track.name:
+                    name.append('Other')
+                elif 'Other' in track.name:
+                    name.append('Other')
+                else:
+                    name.append('Other')
+                skiing.append(didiski)
+
+xdata = pd.DataFrame({
+        'x':x,
+        'lat':(lat),
+        'lon':(lon),
+        'elev':(elev),
+        'time':time,
+        'Event':name,
+        'What Have I Skiied':skiing,
+        'Title':eventtitle,
+        #'col':c
+        })
+xdata = xdata.drop(xdata[xdata.lat == 0].index)
+xdata = xdata.drop(xdata[xdata.lon == 0].index)
+#xdata = xdata.drop(xdata[xdata.elev == 0].index)
+xdata = xdata.set_index([range(len(xdata))])
+
+
+'''
+Miles in activity calculation
+'''
+for activity in np.unique(xdata.x):
+    df = xdata[xdata.x==activity]
+    where = np.where(xdata.x==activity)[0]
+    
+    lon = np.array(df.lon)
+    lat = np.array(df.lat)
+    metersN = (lon[1:] - lon[0:-1])*111300.
+    metersE = (lat[1:] - lat[0:-1])*85300.
+    meters = np.sqrt(metersN**2 + metersE**2)
+    miles = meters*0.000621371
+    miles= np.insert(miles,0,0,axis=0)
+    xdata.loc[where,'Miles'] = miles
+
+
+print 'Added:'
+for Event in np.unique(xdata.x):
+    df = xdata[xdata.x==Event]
+    print '  {2}th Event - {0} [{1} miles]'.format(np.unique(df.Event)[0],round(np.sum(df.Miles),2),int(np.unique(df.x)[0]))
+
+'''
+
+from geopy.geocoders import Nominatim
+geolocator = Nominatim()
+lat,lng = xdata.lat.median(),xdata.lon.median()
+
+
+df = xdata[xdata.Miles==xdata.Miles.min()]
+location = geolocator.reverse("%s, %s"%(df.lat.median(),df.lon.median()))
+print(location.address)
+
+df = xdata[xdata.Miles==xdata.Miles.max()]
+location = geolocator.reverse("%s, %s"%(df.lat.median(),df.lon.median()))
+print(location.address)
+
+location = geolocator.geocode("Arapahoe Basin Ski Area, CO")
+print((location.latitude, location.longitude))
+print(location.address)
+
+
+for i,j in enumerate(xdata.lat):
+    lat,lng = xdata.loc[i,'lat'],xdata.loc[i,'lon']
+    location = geolocator.reverse("%s, %s"%(lat,lng))
+    print lat,lng
+    print(location.address)
+
+
+
+exit()
+
+'''
+
+
+x14ersx = pd.DataFrame({
+        's':s,
+        'lat':(sumlat),
+        'lon':(sumlon),
+        'elev':(sumelev),
+        #'event':event
+        })
+
+#'Import .tcx files into variables.'
+lat = []
+lon = []
+elev = []
+time = []
+x = []
+c = []
+
+#i=0
+#i = data_tcx.x.max()
+
+if refresh: i = 0
+else: i = data_tcx.x.max()
+
+# Dad's Fitbit.
+for activity in filesx:
+    if '.gpx' in activity:
+        continue
+    if not refresh:
+        if activity in filelist: # gpx_files
+            continue
+    else:
+        print activity
+        gpx_filename = join(data_path,activity)
+        doc = minidom.parse(gpx_filename)
+        if '.tcx' in activity:col='orange'
+        if '.gpx' in activity:col='red'
+        i = i+1#int(np.where(np.char.find(filesx,activity)==0)[0])
+        latitudes = doc.getElementsByTagName("LatitudeDegrees")
+        longitudes = doc.getElementsByTagName("LongitudeDegrees")
+        times = doc.getElementsByTagName("Time")
+        trackpoint = doc.getElementsByTagName("Trackpoint")
+        altitudes = doc.getElementsByTagName("AltitudeMeters")
+        for ts,lats,lons,alt in zip(times,latitudes,longitudes,altitudes):
+            time.append(ts.firstChild.data)
+            lat.append(lats.firstChild.data)
+            lon.append(lons.firstChild.data)
+            elev.append(alt.firstChild.data)
+            x.append(i)
+            c.append(col)
+
+my_ints = np.array([str(l) for l in lat], dtype=np.float64)
+lat = my_ints
+my_ints = np.array([str(l) for l in lon], dtype=np.float64)
+lon = my_ints
+
+
+xdata_tcx = pd.DataFrame({
+    'x':x,
+    'lat':(lat),
+    'lon':(lon),
+    'elev':(elev),
+    'time':time,
+    'meters':x,
+    'col':c})
+
+######################################################
+if refresh:
+    data_tcx = xdata_tcx # This was the problem
+    data = xdata
+    x14ers = x14ersx
+else:
+    data_tcx = pd.concat([data_tcx,xdata_tcx])
+    data = pd.concat([data,xdata])
+    x14ers = pd.concat([x14ers,x14ersx])
+######################################################
+print '\n\n\n______________________________\nMarks Recorded Activites:\n\n\n====== Events in Total Miles ======'
+event_stats = data.groupby( [ "Event"] )['Miles','Miles'].sum()
+print event_stats.round(1)
+
+
+# MAP
+'''
+Create a map
+'''
+if len(xdata) >0:
+    gmap = mymap.GoogleMapPlotter(xdata.lat.median(),xdata.lon.median(),12)
+    #gmap = gmplot.GoogleMapPlotter(xdata.lat.median(),xdata.lon.median(),12)
+else:
+    gmap = mymap.GoogleMapPlotter(39.0, -105.7821,8)
+    #gmap = gmplot.GoogleMapPlotter(39.0, -105.7821,8)
+
+
+for x in (np.unique(data_tcx.x)): #[31.]:#
+    df = data_tcx[data_tcx.x==x]
+    gmap.plot(df.lat, df.lon, color='magenta',edge_width=2.8)
+
+for x in (np.unique(data.x)):
+    df = data[data.x==x]
+    if np.unique(df.Event) == 'Skiing':
+        color = 'blue'
+    else:
+        color = 'red'
+    gmap.plot(df.lat, df.lon, color=color,edge_width=2.8)
+
+    #gmap.heatmap(df.lat, df.lon)
+
+'''
+for n in data['What Have I Skiied']:
+    if n.split()[0] =='Dillon':
+        data['What Have I Skiied']
+'''
+ski_data = data[data.Event=='Skiing']
+'''
+print ski_data.head()
+print ski_data.index
+for num, lin in enumerate(data['What Have I Skiied']):
+    if lin=='Dillon Resort':
+        data.loc[num,'What Have I Skiied'] = 'Keystone Resort'
+
+'''
+where = np.where(data.Event=='Skiing')[0]
+ski_resorts = ski_data.groupby( ['What Have I Skiied'] )['lat','lon'].median()
+name = ski_resorts.index[0]#['What Have I Skiied']
+
+'''
+Once Skiing is possible, I want add the names i.e. 'Telluride' to the mark 
+name and have that as the marker name with resort logo
+'''
+
+#for index, row in ski_resorts.iterrows():
+#la,lo,name = row["lat"],row["lon"],index.split()[0].lower()
+#print zip(la,lo),name
+#gmap.scatter((37.9298487492), (-107.850782401), 'telluride', marker=True)
+#print type(ski_resorts.lat)
+
+#exit()
+for i in np.unique(ski_resorts.index):
+    df = ski_resorts[ski_resorts.index==i]
+    la,lo,name = df.lat, df.lon, i.split()[0].lower()
+    gmap.scatter(la,lo,name, marker=True)
+#gmap.scatter(ski_resorts.lat, ski_resorts.lon, 'red', marker=True,title='ski')
+
+
+
+
+
+elev = np.array(ski_data.elev)
+elev = (elev[1:] - elev[0:-1])*3.28084
+elev = np.insert(elev,0,0,axis=0)
+elev[elev>0.] = 0
+elev = np.abs(elev)
+elev = np.array(elev)
+e = pd.Series(elev)
+ski_data = ski_data.assign(Vertical_Decent=elev)
+ski_data.rename(columns={'Vertical_Decent': 'Vertical Descent (ft)'}, inplace=True)
+'''
+Figure this out (above),
+rename pandas columns to title().
+'''
+
+print '\n====== Ski Resorts ======'
+Ski_stats = ski_data.groupby( ['What Have I Skiied'] )['Miles','Vertical Descent (ft)'].sum()
+print Ski_stats.round(1)
+
+
+
+
+
+
+
+
+ # plotting the scatter markers for 14ers.
+mtn=0
+for s in (np.unique(x14ers.s)):
+    df = x14ers[x14ers.s==s]
+    df = df[df.elev > 4100]
+    mtn = len(df)+mtn
+    gmap.scatter(df.lat, df.lon, 'mtn',marker=True)
+print '\n====== Number of 14ers climbed ====== \n{0}\n\n'.format(mtn)
+
+
+
+
+
+name = '/Users/leonard/Documents/GPS/Mark_Activities.html'
+gmap.draw(name)
+
+exit()
+
+# Create dataframe of gpx file names.
+fileslist = pd.DataFrame({'gpx':all_files})
+fileslist.to_csv('%s/fileslist.txt'%Dataframes, sep=',',index=False)
+
+# Create dataframe of gpx file names.
+data.to_csv('%s/gpx.txt'%Dataframes, sep=',',index=False)
+
+data_tcx.to_csv('%s/data_tcx.txt'%Dataframes, sep=',',index=False)
+
+fileslist.to_csv('%s/fileslist.txt'%Dataframes, sep=',',index=False)
+
+x14ers.to_csv('%s/x14ers.txt'%Dataframes, sep=',',index=False)
+
+import webbrowser
+webbrowser.open_new_tab('file:///Users/leonard/Documents/GPS/Mark_Activities.html')
+
+exit()
+
+for x in (np.unique(data.x)):
+    df = data[data.x==x]
+    t =df.time.min()[:10]
+    name = '{0}_{1}'.format(np.unique(df.Event)[0],t)
+    gep=googleearthplot()
+    lat=(list(df.lat))
+    lon=(list(df.lon))
+    #height=(list(df.x))
+    gep.PlotLineChart(lat, lon, name=name,color="red",width=12)
+    gep.GenerateKMLFile(filepath="/Users/leonard/Documents/GPS/KML/%s.kml"%name)
+    del df,gep
+
+
